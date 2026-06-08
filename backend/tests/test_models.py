@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.models import (
-    CandidatePaper,
     SearchRequest,
     SearchResponse,
     SearchResultItem,

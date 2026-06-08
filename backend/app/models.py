@@ -17,16 +17,6 @@ class SearchRequest(BaseModel):
     n: int = Field(default=10, ge=1, le=100)
 
 
-class CandidatePaper(BaseModel):
-    arxiv_id: str
-    title: str
-    authors: list[str]
-    abstract: str
-    published: date
-    url: str
-    relevance_rank: int  # 0-based; 0 = most relevant (arXiv order)
-
-
 class SearchResultItem(BaseModel):
     arxiv_id: str
     title: str
