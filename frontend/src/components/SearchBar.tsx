@@ -1,18 +1,21 @@
 import { useState } from "react";
 
 interface Props {
-  onSearch: (query: string, n: number) => void;
+  onSearch: (query: string) => void;
+  onNChange: (n: number) => void;
+  n: number;
   loading: boolean;
 }
 
-export function SearchBar({ onSearch, loading }: Props) {
+const COUNT_OPTIONS = [5, 10, 25];
+
+export function SearchBar({ onSearch, onNChange, n, loading }: Props) {
   const [query, setQuery] = useState("");
-  const [n, setN] = useState(10);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (query.trim()) {
-      onSearch(query.trim(), n);
+      onSearch(query.trim());
     }
   }
 
@@ -29,13 +32,13 @@ export function SearchBar({ onSearch, loading }: Props) {
       </label>
       <label>
         Results
-        <input
-          type="number"
-          min={1}
-          max={100}
-          value={n}
-          onChange={(e) => setN(Number(e.target.value))}
-        />
+        <select value={n} onChange={(e) => onNChange(Number(e.target.value))}>
+          {COUNT_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </label>
       <button type="submit" disabled={loading}>
         {loading ? "Searching…" : "Search"}
