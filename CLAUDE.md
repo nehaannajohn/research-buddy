@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Early stage. The Milestone 1 design is approved (`docs/superpowers/specs/2026-06-08-research-buddy-discovery-ranking-design.md`) but code is not yet scaffolded. When scaffolding, update the Commands section below with the real commands.
+Milestone 1 (paper discovery & ranking) is implemented: a FastAPI backend (`backend/`) and a React + TypeScript frontend (`frontend/`). See the Commands section below. Milestones 2–5 are not yet started.
 
 ## What This Is
 
@@ -43,4 +43,15 @@ A two-stage data pipeline behind a FastAPI endpoint. Four focused, independently
 
 ## Commands
 
-Pending scaffolding — fill in once the backend and frontend exist (build, test, run, single-test). Until then there are no project commands.
+### Backend (`backend/`)
+- Setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
+- Run: `.venv/bin/uvicorn app.main:app --reload` (http://localhost:8000)
+- Test: `.venv/bin/pytest`
+- Single test: `.venv/bin/pytest tests/test_ranker.py::test_final_score_applies_weights -v`
+- Live smoke tests: `.venv/bin/pytest --run-live`
+
+### Frontend (`frontend/`)
+- Setup: `npm install`
+- Run: `npm run dev` (http://localhost:5173)
+- Test: `npm test`
+- Build: `npm run build`
