@@ -4,15 +4,13 @@ import { ResultCard } from "../components/ResultCard";
 import type { SearchResultItem } from "../types";
 
 const item: SearchResultItem = {
-  arxiv_id: "2001.11111",
+  arxiv_id: "2001.08361",
   title: "Scaling Laws for Neural Language Models",
-  authors: ["Jane Researcher", "John Scientist"],
+  authors: ["Jared Kaplan", "Sam McCandlish"],
   abstract: "We study empirical scaling laws.",
   published: "2020-01-23",
-  url: "http://arxiv.org/abs/2001.11111",
-  citation_count: 1234,
-  sub_scores: { relevance: 1.0, citations: 0.9, recency: 0.5 },
-  final_score: 0.82,
+  url: "http://arxiv.org/abs/2001.08361",
+  citation_count: 1504,
   citation_data_missing: false,
 };
 
@@ -22,24 +20,24 @@ describe("ResultCard", () => {
     const link = screen.getByRole("link", {
       name: /Scaling Laws for Neural Language Models/i,
     });
-    expect(link).toHaveAttribute("href", "http://arxiv.org/abs/2001.11111");
+    expect(link).toHaveAttribute("href", "http://arxiv.org/abs/2001.08361");
   });
 
-  it("shows citation count and the three sub-scores", () => {
+  it("shows the citation count and date", () => {
     render(<ResultCard item={item} />);
-    expect(screen.getByText(/1234/)).toBeInTheDocument();
-    expect(screen.getByText(/relevance/i)).toBeInTheDocument();
-    expect(screen.getByText(/citations/i)).toBeInTheDocument();
-    expect(screen.getByText(/recency/i)).toBeInTheDocument();
+    expect(screen.getByText(/1504/)).toBeInTheDocument();
+    expect(screen.getByText(/2020-01-23/)).toBeInTheDocument();
+  });
+
+  it("does not render a score breakdown", () => {
+    render(<ResultCard item={item} />);
+    expect(screen.queryByText(/relevance/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recency/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/score/i)).not.toBeInTheDocument();
   });
 
   it("shows a flag badge when citation data is missing", () => {
     render(<ResultCard item={{ ...item, citation_data_missing: true }} />);
     expect(screen.getByText(/citation data unavailable/i)).toBeInTheDocument();
-  });
-
-  it("does not show the flag badge when citation data is present", () => {
-    render(<ResultCard item={item} />);
-    expect(screen.queryByText(/citation data unavailable/i)).not.toBeInTheDocument();
   });
 });
