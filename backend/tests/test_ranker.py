@@ -35,7 +35,7 @@ def test_relevance_scales_linearly_by_rank():
 
 def test_citations_are_log_scaled_then_normalized():
     cands = [_candidate("a", 0), _candidate("b", 1)]
-    counts = {"a": 999, "b": 9}  # log1p(1000)=6.907..., log1p(10)=2.397...
+    counts = {"a": 999, "b": 9}  # log1p(999)=6.908..., log1p(9)=2.303...
     out = {r.arxiv_id: r.sub_scores.citations for r in rank(cands, counts, Weights(), n=2)}
     assert out["a"] == 1.0
     assert math.isclose(out["b"], math.log1p(9) / math.log1p(999), rel_tol=1e-9)
