@@ -30,7 +30,8 @@ A **retrieve-then-sort** pipeline behind a FastAPI endpoint. Current design:
 `docs/superpowers/specs/2026-06-08-research-buddy-retrieve-then-sort-redesign.md`
 (the original weighted-ranking spec is superseded). Focused, independently-testable units:
 
-- **`OpenAlexClient`** — single source for discovery. `search(query, pool_size)` queries OpenAlex (`/works`, `search=`, filtered to arXiv-hosted works via `primary_location.source.id`), returning `list[SearchResultItem]` with title, authors, abstract (reconstructed from OpenAlex's inverted index), published date, arXiv URL, and `cited_by_count` — all in one call (`per-page` caps at 200). Raises `OpenAlexUnavailable`.
+- **`OpenAlexClient`** — single source for discovery/ranking/citations. `search(query, pool_size)` queries OpenAlex (`/works`, `search=`, filtered to arXiv-hosted works via `primary_location.source.id`), returning `list[SearchResultItem]` with title, authors, published date, arXiv URL, and `cited_by_count` — all in one call (`per-page` caps at 200). Raises `OpenAlexUnavailable`.
+- **`ArxivAbstractClient`** — fetches authoritative abstracts from arXiv by `id_list` (chunked at 100), keyed by arXiv id. `SearchService` overlays these onto the pool (OpenAlex's reconstructed abstracts are unreliable). Raises `ArxivAbstractsUnavailable`; abstract failure degrades gracefully (keeps OpenAlex text + warning) — OpenAlex stays the only hard dependency.
 - **`Sorter`** — **pure function, no I/O.** `sort_papers(items, sort_key, n)` returns the top N by a single key: `relevance` (input/OpenAlex order), `citations`, or `recency` (stable descending; ties keep relevance order). No weighting, no normalization.
 - **`SearchService`** — orchestrates: OpenAlex retrieve (fixed 200 pool) → store full pool under `search_id` → return relevance-order top N. A `resort(search_id, sort_key, n)` path re-sorts the stored pool with no new network calls.
 - **`ResultStore`** — in-memory store keyed by `search_id`.
