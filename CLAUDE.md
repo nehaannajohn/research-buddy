@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Early stage. The Milestone 1 design is approved (`docs/superpowers/specs/2026-06-08-research-buddy-discovery-ranking-design.md`) but code is not yet scaffolded. When scaffolding, update the Commands section below with the real commands.
+Milestone 1 (paper discovery & ranking) is implemented: a FastAPI backend (`backend/`) and a React + TypeScript frontend (`frontend/`). See the Commands section below. Milestones 2–5 are not yet started.
 
 ## What This Is
 
@@ -26,21 +26,35 @@ Only Milestone 1 is in scope right now. Do not build later-milestone functionali
 
 ## Architecture (Milestone 1)
 
-A two-stage data pipeline behind a FastAPI endpoint. Four focused, independently-testable units:
+A **retrieve-then-sort** pipeline behind a FastAPI endpoint. Current design:
+`docs/superpowers/specs/2026-06-08-research-buddy-retrieve-then-sort-redesign.md`
+(the original weighted-ranking spec is superseded). Focused, independently-testable units:
 
-- **`ArxivClient`** — calls the arXiv API (relevance-sorted) for a candidate pool; returns paper metadata + relevance rank. Provides the **relevance** and **recency** signals.
-- **`CitationClient`** — batch-looks-up arXiv IDs in Semantic Scholar (`ARXIV:<id>`) for **citation counts**. Unmatched IDs → 0, flagged.
-- **`Ranker`** — **pure function, no I/O.** Normalizes each signal to 0–1 and computes `score = 0.5·relevance + 0.3·citations + 0.2·recency` (weights overridable). Returns the sorted top-N. Keep it I/O-free so it stays unit-testable in isolation.
-- **`SearchService`** — orchestrates arXiv → enrich → rank → return.
+- **`OpenAlexClient`** — single source for discovery/ranking/citations. `search(query, pool_size)` queries OpenAlex (`/works`, `search=`, filtered to arXiv-hosted works via `primary_location.source.id`), returning `list[SearchResultItem]` with title, authors, published date, arXiv URL, and `cited_by_count` — all in one call (`per-page` caps at 200). Raises `OpenAlexUnavailable`.
+- **`ArxivAbstractClient`** — fetches authoritative abstracts from arXiv by `id_list` (chunked at 100), keyed by arXiv id. `SearchService` overlays these onto the pool (OpenAlex's reconstructed abstracts are unreliable). Raises `ArxivAbstractsUnavailable`; abstract failure degrades gracefully (keeps OpenAlex text + warning) — OpenAlex stays the only hard dependency.
+- **`Sorter`** — **pure function, no I/O.** `sort_papers(items, sort_key, n)` returns the top N by a single key: `relevance` (input/OpenAlex order), `citations`, or `recency` (stable descending; ties keep relevance order). No weighting, no normalization.
+- **`SearchService`** — orchestrates: OpenAlex retrieve (fixed 200 pool) → store full pool under `search_id` → return relevance-order top N. A `resort(search_id, sort_key, n)` path re-sorts the stored pool with no new network calls.
+- **`ResultStore`** — in-memory store keyed by `search_id`.
 
 ### Load-bearing design decisions (do not violate without updating the spec)
 
-- **Two-stage sourcing:** arXiv finds candidates, Semantic Scholar only enriches with citations. Fetch a wide pool (`max(50, N×5)`) from arXiv, *then* narrow to top-N after enrichment.
-- **Citations are log-scaled before normalizing** — citation counts are heavily skewed; log-scaling stops a few blockbuster papers from flattening everyone else.
-- **Citation enrichment is additive, never a hard dependency.** If Semantic Scholar fails or rate-limits, degrade gracefully: return arXiv results ranked on relevance + recency only, with a warning. The search must still succeed.
-- **Sub-scores are returned to the UI**, not just the final score, so result cards can show *why* a paper ranked where it did.
-- **`search_id` + server-side result store** (in-memory for v1) is a deliberate seam. Milestones 2–3 attach to it ("refine search X", "summarize paper 2 from search X") to avoid re-running the pipeline. Preserve it.
+- **OpenAlex is the single source for retrieval *and* sorting.** It provides relevance ranking, citation counts, and dates in one response. (arXiv's own relevance was too weak — it buried canonical papers past rank 300; OpenAlex ranks them near the top.)
+- **Retrieve-then-sort, no weighting:** fetch a fixed pool of 200 by relevance, then the user sorts that stored pool by citations or recency (top N, default 10).
+- **Re-sort reads the stored pool**, never re-queries — the `search_id` + in-memory store is the seam Milestones 2–3 attach to ("refine search X", "summarize paper 2 from search X"). Preserve it.
+- **Graceful failure:** if OpenAlex is down the search returns 503; an empty result set returns a friendly "broaden your query" message, not an error.
 
 ## Commands
 
-Pending scaffolding — fill in once the backend and frontend exist (build, test, run, single-test). Until then there are no project commands.
+### Backend (`backend/`)
+- Setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
+- Run: `.venv/bin/uvicorn app.main:app --reload` (http://localhost:8000)
+- Test: `.venv/bin/pytest`
+- Single test: `.venv/bin/pytest tests/test_sorter.py::test_sort_citations_descending -v`
+- Live smoke tests (hit OpenAlex): `.venv/bin/pytest --run-live`
+- API: `POST /api/search {query, n}` returns a `search_id` + relevance-ordered results; `GET /api/search/{search_id}?sort=citations|recency&n=10` re-sorts the stored pool. Set `OPENALEX_MAILTO` to use OpenAlex's faster polite pool.
+
+### Frontend (`frontend/`)
+- Setup: `npm install`
+- Run: `npm run dev` (http://localhost:5173)
+- Test: `npm test`
+- Build: `npm run build`

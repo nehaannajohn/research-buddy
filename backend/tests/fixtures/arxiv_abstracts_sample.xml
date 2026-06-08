@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2001.08361v1</id>
+    <summary>
+      We study empirical scaling laws for language model performance
+      on the cross-entropy loss.
+    </summary>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/1507.07878v2</id>
+    <summary>Scaling laws are powerful summaries of urban attributes.</summary>
+  </entry>
+</feed>
