@@ -195,3 +195,29 @@ arXiv DOI are skipped.
 frontend. `POOL_SIZE` stays 200 (ample, since OpenAlex ranks canonical papers
 near the top). The trade-offs: OpenAlex can lag arXiv by a few days for
 brand-new papers, and abstracts require reconstruction from the inverted index.
+
+## Amendment — Authoritative abstracts from arXiv (2026-06-08)
+
+OpenAlex's `abstract_inverted_index` is occasionally wrong (observed: the record
+for arXiv:2001.08361 reconstructs to an unrelated abstract). Since correct
+abstracts matter for the result cards, we keep OpenAlex for identifying / ranking /
+citing records, but fetch **authoritative abstracts from arXiv**.
+
+**New `ArxivAbstractClient`** — `get_abstracts(arxiv_ids) -> {arxiv_id: abstract}`.
+Calls the arXiv API by `id_list` (chunked at 100 ids/request; `max_results=len`),
+parses each entry's `summary` (whitespace-normalized), keying by the bare arXiv id
+(version suffix stripped). HTTPS + follow-redirects. Empty input → `{}` (no call).
+HTTP error → `ArxivAbstractsUnavailable`.
+
+**Wiring:** `SearchService(openalex_client, abstract_client, store)`. After OpenAlex
+returns the pool, fetch arXiv abstracts for the pool's ids and overlay them onto
+each `SearchResultItem` (replacing the OpenAlex-reconstructed abstract). This
+overlay happens once, at search time, before the pool is stored — so re-sorting
+still reads correct abstracts from the store with no new calls.
+
+**Graceful degradation:** if `ArxivAbstractsUnavailable`, keep the OpenAlex
+abstract as a fallback and attach a warning ("Abstracts may be incomplete"). The
+search still succeeds. (OpenAlex remains the only hard dependency: if OpenAlex is
+down → 503; arXiv affects only abstract text.)
+
+This adds one (chunked) arXiv call per search; re-sort is unaffected.
