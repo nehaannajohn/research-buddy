@@ -37,8 +37,21 @@ def test_maps_arxiv_doi_results_to_bare_ids(monkeypatch):
         "doi:10.48550/arxiv.2001.08361|10.48550/arxiv.2001.11111|10.48550/arxiv.1810.04805"
     )
     assert captured["params"]["select"] == "doi,cited_by_count"
+    assert captured["params"]["per-page"] == 50
     # 1810.04805 not returned by OpenAlex (deduped upstream) -> omitted, treated as missing
     assert counts == {"2001.08361": 1504, "2001.11111": 12}
+
+
+def test_strips_query_or_fragment_from_doi_when_mapping(monkeypatch):
+    def fake_get(url, params, timeout, follow_redirects):
+        results = [
+            {"doi": "https://doi.org/10.48550/arxiv.2001.08361?ver=2", "cited_by_count": 9},
+        ]
+        return _ok(results, url)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    counts = CitationClient().get_citation_counts(["2001.08361"])
+    assert counts == {"2001.08361": 9}
 
 
 def test_includes_mailto_when_configured(monkeypatch):
@@ -95,9 +108,20 @@ def test_skips_results_with_null_citation_count(monkeypatch):
     assert counts == {"2001.11111": 7}
 
 
-def test_http_error_raises_citation_unavailable(monkeypatch):
+def test_connect_error_raises_citation_unavailable(monkeypatch):
     def fake_get(url, params, timeout, follow_redirects):
         raise httpx.ConnectError("boom")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    with pytest.raises(CitationUnavailable):
+        CitationClient().get_citation_counts(["2001.08361"])
+
+
+def test_rate_limit_status_raises_citation_unavailable(monkeypatch):
+    # A 429 (the reason we left Semantic Scholar) must surface as CitationUnavailable
+    # so SearchService can degrade gracefully rather than crash the search.
+    def fake_get(url, params, timeout, follow_redirects):
+        return httpx.Response(429, json={}, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx, "get", fake_get)
     with pytest.raises(CitationUnavailable):

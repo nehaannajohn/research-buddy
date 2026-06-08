@@ -10,7 +10,9 @@ OPENALEX_WORKS = "https://api.openalex.org/works"
 # arXiv mints a DOI for every paper in the form 10.48550/arXiv.<id>; OpenAlex
 # stores it lower-cased (10.48550/arxiv.<id>) and indexes the work under it.
 _ARXIV_DOI_PREFIX = "10.48550/arxiv."
-_ARXIV_FROM_DOI = re.compile(r"10\.48550/arxiv\.(.+)$", re.IGNORECASE)
+# Capture the bare id, stopping at any query/fragment so a stray ?ver=2 or #frag
+# in the DOI field can't corrupt the id we map back to.
+_ARXIV_FROM_DOI = re.compile(r"10\.48550/arxiv\.([^\s?#]+)", re.IGNORECASE)
 
 # OpenAlex allows up to 50 OR-separated values in a single filter.
 _CHUNK_SIZE = 50
