@@ -1720,3 +1720,32 @@ lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; lsof -ti tcp:5173 | xargs kill -9
 - [ ] **Frontend:** `(cd frontend && npm test && npm run build)` → all pass, build clean.
 - [ ] **No dead references:** `grep -rn "Ranker\|Weights\|sub_scores\|final_score\|WeightSliders" backend/app frontend/src` → no matches in source (only in the superseded spec / git history).
 - [ ] **End-to-end:** search → relevance order; Citations re-sort surfaces high-citation papers; Recency re-sort orders by date; result-count selector changes list length; unknown `search_id` → 404 / "search expired" in UI.
+
+---
+
+## Revision A — OpenAlex as single source (supersedes backend Tasks 1–5)
+
+Per the spec amendment "OpenAlex as the single source", retrieval moves from arXiv
+to OpenAlex. Backend Tasks 1–4 were implemented against arXiv and are now reworked
+by tasks **RA1–RA4** below. **Frontend Tasks 6–12, plus docs (13) and verification
+(14), are unchanged** — the `SearchResultItem` shape, the `Sorter.sort_papers`
+function, the store, the `resort()` path, and both API endpoints all stay the same.
+
+### RA1: OpenAlexClient (replaces ArxivClient + DOI CitationClient)
+- Create `app/openalex_client.py`: `OpenAlexClient.search(query, pool_size) -> list[SearchResultItem]`, `OpenAlexUnavailable`, and `_reconstruct_abstract()`. GET `https://api.openalex.org/works` with `search=<query>`, `filter=primary_location.source.id:s4306400194`, `per-page=min(pool_size,200)`, the `select` list, optional `mailto`, `follow_redirects=True`; map each work → `SearchResultItem` (arxiv_id from DOI, url from `primary_location.landing_page_url`, authors from `authorships`, `date.fromisoformat(publication_date)`, `cited_by_count`, abstract reconstructed, `citation_data_missing=False`); skip works without an arXiv DOI; HTTP error → `OpenAlexUnavailable`.
+- Create `tests/test_openalex_client.py` (mocked httpx, fixture JSON): request shape (search/filter/per-page/select), mailto present/absent, work→item mapping, abstract reconstruction, skip-non-arxiv, HTTP error → `OpenAlexUnavailable`.
+- `git rm` `app/arxiv_client.py app/citation_client.py tests/test_arxiv_client.py tests/test_citation_client.py tests/fixtures/arxiv_sample.xml`.
+
+### RA2: Models + Sorter cleanup
+- `models.py`: remove `CandidatePaper` (now unused). Keep everything else. Update `tests/test_models.py` import (drop `CandidatePaper`).
+- `sorter.py`: remove `build_result_items` (the client builds items now); keep `sort_papers`. Update `tests/test_sorter.py` to construct `SearchResultItem` directly via a local helper (no `CandidatePaper`/`build_result_items`).
+
+### RA3: SearchService (single client)
+- `search_service.py`: constructor becomes `(openalex_client, store)`. `search()` calls `openalex_client.search(request.query, POOL_SIZE)`, maps `OpenAlexUnavailable` → `SearchSourceUnavailable`, empty → "broaden" warning, stores full pool, returns relevance-order top n. `resort()` and `_store_and_respond()` unchanged. Remove the citation-degradation path. Rewrite `tests/test_search_service.py` with a `FakeOpenAlex` returning `list[SearchResultItem]`.
+
+### RA4: main.py wiring + suite + live smoke
+- `main.py`: `_service = SearchService(OpenAlexClient(mailto=os.getenv("OPENALEX_MAILTO")), _store)`. (API routes unchanged; `test_api.py` uses a `FakeService` and needs no change — confirm it still passes.)
+- Replace `tests/test_live_smoke.py` with an OpenAlex retrieval smoke test (search "scaling laws" → returns results; top results include a highly-cited canonical paper). Remove the arXiv/Semantic-Scholar smoke tests.
+- Run the full backend suite (live skipped) and confirm green.
+
+`POOL_SIZE` stays 200.

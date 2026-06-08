@@ -147,3 +147,51 @@ This `GET /api/search/{search_id}` endpoint is the first concrete use of the
 Interactive query refinement, PDF summarization, AWS experiment orchestration,
 results dashboard. The `search_id` + store seam remains the attach point for
 Milestones 2–3.
+
+## Amendment — OpenAlex as the single source (retrieval + sorting) (2026-06-08)
+
+The retrieve-by-arXiv design above hit a wall: arXiv's relevance ranking is weak.
+For "scaling laws", arXiv ranks the canonical "Scaling Laws for Neural Language
+Models" at position **335** (out of 434,384 keyword matches) — outside any
+reasonable pool — so the citation sort could never surface it. Measured against
+the same query, **OpenAlex ranks that paper #1**, because its relevance model
+folds in impact signals.
+
+So retrieval moves to **OpenAlex as the single source**: it provides relevance
+ranking, citation counts, and publication dates in one response. arXiv's API is
+no longer called.
+
+**Retrieval:** `GET https://api.openalex.org/works` with `search=<query>`,
+`filter=primary_location.source.id:s4306400194` (arXiv-hosted works only),
+`per-page=200` (OpenAlex's max; one call — no pagination needed), and a `select`
+of `doi,title,authorships,publication_date,cited_by_count,abstract_inverted_index,primary_location`.
+Results come back in OpenAlex relevance order. Optional `mailto` (from
+`OPENALEX_MAILTO`) for the polite pool.
+
+**Mapping a work → `SearchResultItem`:** `arxiv_id` from the DOI
+(`10.48550/arXiv.<id>`); `url` from `primary_location.landing_page_url`; `authors`
+from `authorships[].author.display_name`; `published` parsed from
+`publication_date`; `citation_count` from `cited_by_count`; `abstract`
+reconstructed from `abstract_inverted_index` (word→positions). Works without an
+arXiv DOI are skipped.
+
+**Components changed:**
+- **New `OpenAlexClient`** — `search(query, pool_size) -> list[SearchResultItem]`;
+  raises `OpenAlexUnavailable`. Includes the abstract-reconstruction helper.
+- **`ArxivClient` and the DOI-roundtrip `CitationClient` are removed** (along with
+  their tests and the arXiv XML fixture). One source, one call.
+- **`Sorter`** keeps `sort_papers`; `build_result_items` is removed (the client now
+  produces `SearchResultItem` directly). `CandidatePaper` model is removed.
+- **`SearchService`** takes a single `openalex_client` + `store`. `OpenAlexUnavailable`
+  → `SearchSourceUnavailable` (503). Empty results → "broaden" warning.
+- **Error handling simplifies:** there is no longer a separate citation-enrichment
+  step, so the "citations unavailable, degrade with warning" path goes away — if
+  OpenAlex is down the search fails (503). `citation_data_missing` is retained on
+  `SearchResultItem` (always `False` here) so the result shape and frontend are
+  unchanged.
+
+**Unchanged:** `sort_papers`, `ResultStore`, the `resort()` path, the
+`POST /api/search` + `GET /api/search/{search_id}` endpoints, and the entire
+frontend. `POOL_SIZE` stays 200 (ample, since OpenAlex ranks canonical papers
+near the top). The trade-offs: OpenAlex can lag arXiv by a few days for
+brand-new papers, and abstracts require reconstruction from the inverted index.
