@@ -26,20 +26,21 @@ Only Milestone 1 is in scope right now. Do not build later-milestone functionali
 
 ## Architecture (Milestone 1)
 
-A two-stage data pipeline behind a FastAPI endpoint. Four focused, independently-testable units:
+A **retrieve-then-sort** pipeline behind a FastAPI endpoint. Current design:
+`docs/superpowers/specs/2026-06-08-research-buddy-retrieve-then-sort-redesign.md`
+(the original weighted-ranking spec is superseded). Focused, independently-testable units:
 
-- **`ArxivClient`** — calls the arXiv API (relevance-sorted) for a candidate pool; returns paper metadata + relevance rank. Provides the **relevance** and **recency** signals.
-- **`CitationClient`** — batch-looks-up arXiv IDs in OpenAlex by arXiv DOI (`10.48550/arXiv.<id>`, OR-filtered ≤50 per request) for **citation counts** (`cited_by_count`). Unmatched IDs → 0, flagged. (Originally Semantic Scholar — swapped to OpenAlex; see the design spec's provider note.)
-- **`Ranker`** — **pure function, no I/O.** Normalizes each signal to 0–1 and computes `score = 0.5·relevance + 0.3·citations + 0.2·recency` (weights overridable). Returns the sorted top-N. Keep it I/O-free so it stays unit-testable in isolation.
-- **`SearchService`** — orchestrates arXiv → enrich → rank → return.
+- **`OpenAlexClient`** — single source for discovery. `search(query, pool_size)` queries OpenAlex (`/works`, `search=`, filtered to arXiv-hosted works via `primary_location.source.id`), returning `list[SearchResultItem]` with title, authors, abstract (reconstructed from OpenAlex's inverted index), published date, arXiv URL, and `cited_by_count` — all in one call (`per-page` caps at 200). Raises `OpenAlexUnavailable`.
+- **`Sorter`** — **pure function, no I/O.** `sort_papers(items, sort_key, n)` returns the top N by a single key: `relevance` (input/OpenAlex order), `citations`, or `recency` (stable descending; ties keep relevance order). No weighting, no normalization.
+- **`SearchService`** — orchestrates: OpenAlex retrieve (fixed 200 pool) → store full pool under `search_id` → return relevance-order top N. A `resort(search_id, sort_key, n)` path re-sorts the stored pool with no new network calls.
+- **`ResultStore`** — in-memory store keyed by `search_id`.
 
 ### Load-bearing design decisions (do not violate without updating the spec)
 
-- **Two-stage sourcing:** arXiv finds candidates, the citation source (OpenAlex) only enriches with citations. Fetch a wide pool (`max(50, N×5)`) from arXiv, *then* narrow to top-N after enrichment.
-- **Citations are log-scaled before normalizing** — citation counts are heavily skewed; log-scaling stops a few blockbuster papers from flattening everyone else.
-- **Citation enrichment is additive, never a hard dependency.** If the citation source fails or rate-limits, degrade gracefully: return arXiv results ranked on relevance + recency only, with a warning. The search must still succeed.
-- **Sub-scores are returned to the UI**, not just the final score, so result cards can show *why* a paper ranked where it did.
-- **`search_id` + server-side result store** (in-memory for v1) is a deliberate seam. Milestones 2–3 attach to it ("refine search X", "summarize paper 2 from search X") to avoid re-running the pipeline. Preserve it.
+- **OpenAlex is the single source for retrieval *and* sorting.** It provides relevance ranking, citation counts, and dates in one response. (arXiv's own relevance was too weak — it buried canonical papers past rank 300; OpenAlex ranks them near the top.)
+- **Retrieve-then-sort, no weighting:** fetch a fixed pool of 200 by relevance, then the user sorts that stored pool by citations or recency (top N, default 10).
+- **Re-sort reads the stored pool**, never re-queries — the `search_id` + in-memory store is the seam Milestones 2–3 attach to ("refine search X", "summarize paper 2 from search X"). Preserve it.
+- **Graceful failure:** if OpenAlex is down the search returns 503; an empty result set returns a friendly "broaden your query" message, not an error.
 
 ## Commands
 
@@ -47,8 +48,9 @@ A two-stage data pipeline behind a FastAPI endpoint. Four focused, independently
 - Setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
 - Run: `.venv/bin/uvicorn app.main:app --reload` (http://localhost:8000)
 - Test: `.venv/bin/pytest`
-- Single test: `.venv/bin/pytest tests/test_ranker.py::test_final_score_applies_weights -v`
-- Live smoke tests: `.venv/bin/pytest --run-live`
+- Single test: `.venv/bin/pytest tests/test_sorter.py::test_sort_citations_descending -v`
+- Live smoke tests (hit OpenAlex): `.venv/bin/pytest --run-live`
+- API: `POST /api/search {query, n}` returns a `search_id` + relevance-ordered results; `GET /api/search/{search_id}?sort=citations|recency&n=10` re-sorts the stored pool. Set `OPENALEX_MAILTO` to use OpenAlex's faster polite pool.
 
 ### Frontend (`frontend/`)
 - Setup: `npm install`
