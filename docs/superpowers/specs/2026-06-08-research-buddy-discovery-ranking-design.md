@@ -1,7 +1,15 @@
 # Research Buddy — Milestone 1: Paper Discovery & Ranking
 
+> ⚠️ **SUPERSEDED (2026-06-08).** This original design used a weighted score
+> (relevance/citations/recency with sliders) and Semantic Scholar for citations.
+> Both have been replaced. The current Milestone 1 design is
+> **[`2026-06-08-research-buddy-retrieve-then-sort-redesign.md`](2026-06-08-research-buddy-retrieve-then-sort-redesign.md)**
+> (retrieve top 200 by relevance → user sorts by citations or recency; no
+> weighting; OpenAlex for citations). This file is kept only for historical
+> context — do not implement from it.
+
 **Date:** 2026-06-08
-**Status:** Approved design
+**Status:** Superseded — see the retrieve-then-sort redesign
 **Scope:** First of five milestones. This milestone covers paper discovery and ranking only. Later milestones (interactive refinement, PDF summarization, AWS experiment orchestration, results dashboard) each get their own design → plan → build cycle.
 
 ## Goal
