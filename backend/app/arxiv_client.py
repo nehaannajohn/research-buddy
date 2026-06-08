@@ -10,7 +10,7 @@ import httpx
 
 from app.models import CandidatePaper
 
-ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_API = "https://export.arxiv.org/api/query"
 _VERSION_SUFFIX = re.compile(r"v\d+$")
 
 
@@ -38,7 +38,12 @@ class ArxivClient:
         last_exc: Exception | None = None
         for attempt in range(retries + 1):
             try:
-                resp = httpx.get(self.base_url, params=params, timeout=self.timeout)
+                resp = httpx.get(
+                    self.base_url,
+                    params=params,
+                    timeout=self.timeout,
+                    follow_redirects=True,
+                )
                 resp.raise_for_status()
                 return resp.text
             except httpx.HTTPError as exc:

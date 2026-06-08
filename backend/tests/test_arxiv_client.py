@@ -35,9 +35,10 @@ def test_parse_handles_legacy_identifier_and_strips_version():
 def test_search_builds_relevance_sorted_request(monkeypatch):
     captured = {}
 
-    def fake_get(url, params, timeout):
+    def fake_get(url, params, timeout, follow_redirects):
         captured["url"] = url
         captured["params"] = params
+        captured["follow_redirects"] = follow_redirects
         return httpx.Response(
             200,
             text=FIXTURE.read_text(),
@@ -48,6 +49,8 @@ def test_search_builds_relevance_sorted_request(monkeypatch):
     client = ArxivClient()
     papers = client.search("scaling laws", pool_size=50)
 
+    assert captured["url"].startswith("https://")  # arXiv 301-redirects http -> https
+    assert captured["follow_redirects"] is True
     assert captured["params"]["search_query"] == "all:scaling laws"
     assert captured["params"]["sortBy"] == "relevance"
     assert captured["params"]["max_results"] == 50
@@ -57,7 +60,7 @@ def test_search_builds_relevance_sorted_request(monkeypatch):
 def test_search_retries_once_then_raises(monkeypatch):
     calls = {"n": 0}
 
-    def always_fail(url, params, timeout):
+    def always_fail(url, params, timeout, follow_redirects):
         calls["n"] += 1
         raise httpx.ConnectError("boom")
 
