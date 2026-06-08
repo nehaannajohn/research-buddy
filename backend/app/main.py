@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import os
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.arxiv_client import ArxivClient
 from app.citation_client import CitationClient
-from app.models import SearchRequest, SearchResponse
-from app.search_service import SearchService, SearchSourceUnavailable
+from app.models import ResortResponse, SearchRequest, SearchResponse, SortKey
+from app.search_service import SearchNotFound, SearchService, SearchSourceUnavailable
 from app.store import ResultStore
 
 app = FastAPI(title="Research Buddy")
@@ -48,3 +48,17 @@ def search(
         raise HTTPException(
             status_code=503, detail="Search source unavailable, please retry."
         )
+
+
+@app.get("/api/search/{search_id}", response_model=ResortResponse)
+def resort(
+    search_id: str,
+    sort: SortKey = SortKey.relevance,
+    n: int = Query(default=10, ge=1, le=100),
+    service: SearchService = Depends(get_service),
+) -> ResortResponse:
+    try:
+        results = service.resort(search_id, sort, n)
+    except SearchNotFound:
+        raise HTTPException(status_code=404, detail="Search expired, please search again.")
+    return ResortResponse(search_id=search_id, results=results, warnings=[])
