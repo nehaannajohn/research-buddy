@@ -5,6 +5,7 @@ import os
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.arxiv_abstracts import ArxivAbstractClient
 from app.openalex_client import OpenAlexClient
 from app.models import ResortResponse, SearchRequest, SearchResponse, SortKey
 from app.search_service import SearchNotFound, SearchService, SearchSourceUnavailable
@@ -23,6 +24,7 @@ _store = ResultStore()
 # OPENALEX_MAILTO opts into OpenAlex's faster "polite pool" when set.
 _service = SearchService(
     OpenAlexClient(mailto=os.getenv("OPENALEX_MAILTO")),
+    ArxivAbstractClient(),
     _store,
 )
 

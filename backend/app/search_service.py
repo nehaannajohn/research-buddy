@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import List
+from typing import Dict, List
 
+from app.arxiv_abstracts import ArxivAbstractsUnavailable
 from app.models import SearchRequest, SearchResponse, SearchResultItem, SortKey
 from app.openalex_client import OpenAlexUnavailable
 from app.sorter import sort_papers
@@ -20,8 +21,9 @@ class SearchNotFound(Exception):
 
 
 class SearchService:
-    def __init__(self, openalex_client, store: ResultStore) -> None:
+    def __init__(self, openalex_client, abstract_client, store: ResultStore) -> None:
         self.openalex_client = openalex_client
+        self.abstract_client = abstract_client
         self.store = store
 
     def search(self, request: SearchRequest) -> SearchResponse:
@@ -33,7 +35,32 @@ class SearchService:
         warnings: List[str] = []
         if not items:
             warnings.append("No matches found. Try broadening your query.")
+            return self._store_and_respond([], warnings, request.n)
+
+        items = self._overlay_abstracts(items, warnings)
         return self._store_and_respond(items, warnings, request.n)
+
+    def _overlay_abstracts(
+        self, items: List[SearchResultItem], warnings: List[str]
+    ) -> List[SearchResultItem]:
+        """Replace OpenAlex abstracts with authoritative arXiv abstracts.
+
+        Degrades gracefully: if arXiv is unavailable, keep the OpenAlex abstracts
+        and warn. (OpenAlex remains the only hard dependency.)
+        """
+        try:
+            abstracts: Dict[str, str] = self.abstract_client.get_abstracts(
+                [it.arxiv_id for it in items]
+            )
+        except ArxivAbstractsUnavailable:
+            warnings.append("Abstracts may be incomplete.")
+            return items
+        return [
+            it.model_copy(update={"abstract": abstracts[it.arxiv_id]})
+            if it.arxiv_id in abstracts
+            else it
+            for it in items
+        ]
 
     def resort(self, search_id: str, sort_key: SortKey, n: int) -> List[SearchResultItem]:
         items = self.store.get(search_id)
