@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2001.11111v2</id>
+    <title>Scaling Laws for Neural Language Models</title>
+    <summary>We study empirical scaling laws for language model performance.</summary>
+    <published>2020-01-23T00:00:00Z</published>
+    <link href="http://arxiv.org/abs/2001.11111v2" rel="alternate" type="text/html"/>
+    <author><name>Jane Researcher</name></author>
+    <author><name>John Scientist</name></author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/cond-mat/0211034v1</id>
+    <title>An Older Style Identifier Paper</title>
+    <summary>A paper using the legacy arXiv identifier scheme.</summary>
+    <published>2002-11-15T00:00:00Z</published>
+    <link href="http://arxiv.org/abs/cond-mat/0211034v1" rel="alternate" type="text/html"/>
+    <author><name>Pat Author</name></author>
+  </entry>
+</feed>
