@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
 
-class Weights(BaseModel):
-    relevance: float = 0.5
-    citations: float = 0.3
-    recency: float = 0.2
+class SortKey(str, Enum):
+    relevance = "relevance"
+    citations = "citations"
+    recency = "recency"
 
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
-    n: int = Field(ge=1, le=100)
-    weights: Optional[Weights] = None
+    n: int = Field(default=10, ge=1, le=100)
 
 
 class CandidatePaper(BaseModel):
@@ -25,13 +24,7 @@ class CandidatePaper(BaseModel):
     abstract: str
     published: date
     url: str
-    relevance_rank: int  # 0-based; 0 = most relevant
-
-
-class SubScores(BaseModel):
-    relevance: float
-    citations: float
-    recency: float
+    relevance_rank: int  # 0-based; 0 = most relevant (arXiv order)
 
 
 class SearchResultItem(BaseModel):
@@ -42,8 +35,6 @@ class SearchResultItem(BaseModel):
     published: date
     url: str
     citation_count: int
-    sub_scores: SubScores
-    final_score: float
     citation_data_missing: bool
 
 
@@ -51,4 +42,10 @@ class SearchResponse(BaseModel):
     search_id: str
     results: list[SearchResultItem]
     pool_size: int
+    warnings: list[str]
+
+
+class ResortResponse(BaseModel):
+    search_id: str
+    results: list[SearchResultItem]
     warnings: list[str]
