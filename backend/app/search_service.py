@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import uuid
-from typing import Dict, List
+from typing import List
 
-from app.arxiv_client import ArxivUnavailable
-from app.citation_client import CitationUnavailable
 from app.models import SearchRequest, SearchResponse, SearchResultItem, SortKey
-from app.sorter import build_result_items, sort_papers
+from app.openalex_client import OpenAlexUnavailable
+from app.sorter import sort_papers
 from app.store import ResultStore
 
 POOL_SIZE = 200
 
 
 class SearchSourceUnavailable(Exception):
-    """Raised when the primary source (arXiv) is unavailable."""
+    """Raised when the source (OpenAlex) is unavailable."""
 
 
 class SearchNotFound(Exception):
@@ -21,34 +20,19 @@ class SearchNotFound(Exception):
 
 
 class SearchService:
-    def __init__(self, arxiv_client, citation_client, store: ResultStore) -> None:
-        self.arxiv_client = arxiv_client
-        self.citation_client = citation_client
+    def __init__(self, openalex_client, store: ResultStore) -> None:
+        self.openalex_client = openalex_client
         self.store = store
 
     def search(self, request: SearchRequest) -> SearchResponse:
         try:
-            candidates = self.arxiv_client.search(request.query, POOL_SIZE)
-        except ArxivUnavailable as exc:
+            items = self.openalex_client.search(request.query, POOL_SIZE)
+        except OpenAlexUnavailable as exc:
             raise SearchSourceUnavailable(str(exc))
 
         warnings: List[str] = []
-
-        if not candidates:
+        if not items:
             warnings.append("No matches found. Try broadening your query.")
-            return self._store_and_respond([], warnings, request.n)
-
-        try:
-            citation_counts: Dict[str, int] = self.citation_client.get_citation_counts(
-                [c.arxiv_id for c in candidates]
-            )
-        except CitationUnavailable:
-            citation_counts = {}
-            warnings.append(
-                "Citation data unavailable — sorting by citations may be incomplete."
-            )
-
-        items = build_result_items(candidates, citation_counts)
         return self._store_and_respond(items, warnings, request.n)
 
     def resort(self, search_id: str, sort_key: SortKey, n: int) -> List[SearchResultItem]:

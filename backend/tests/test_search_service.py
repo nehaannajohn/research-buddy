@@ -4,16 +4,15 @@ from datetime import date
 
 import pytest
 
-from app.arxiv_client import ArxivUnavailable
-from app.citation_client import CitationUnavailable
-from app.models import CandidatePaper, SearchRequest, SortKey
+from app.models import SearchRequest, SearchResultItem, SortKey
+from app.openalex_client import OpenAlexUnavailable
 from app.search_service import POOL_SIZE, SearchNotFound, SearchService, SearchSourceUnavailable
 from app.store import ResultStore
 
 
-class FakeArxiv:
-    def __init__(self, papers=None, exc=None):
-        self.papers = papers or []
+class FakeOpenAlex:
+    def __init__(self, items=None, exc=None):
+        self.items = items or []
         self.exc = exc
         self.pool_size = None
 
@@ -21,96 +20,66 @@ class FakeArxiv:
         self.pool_size = pool_size
         if self.exc:
             raise self.exc
-        return self.papers
+        return self.items
 
 
-class FakeCitations:
-    def __init__(self, counts=None, exc=None):
-        self.counts = counts or {}
-        self.exc = exc
-        self.requested = None
-
-    def get_citation_counts(self, arxiv_ids):
-        self.requested = list(arxiv_ids)
-        if self.exc:
-            raise self.exc
-        return self.counts
-
-
-def _paper(aid, rank_pos, published=date(2020, 1, 1)):
-    return CandidatePaper(
+def _item(aid, citations=0, published=date(2020, 1, 1)):
+    return SearchResultItem(
         arxiv_id=aid,
         title=f"T{aid}",
         authors=["A"],
         abstract="x",
         published=published,
         url=f"http://arxiv.org/abs/{aid}",
-        relevance_rank=rank_pos,
+        citation_count=citations,
+        citation_data_missing=False,
     )
 
 
 def test_requests_fixed_pool_of_200():
-    arxiv = FakeArxiv(papers=[_paper("a", 0)])
-    svc = SearchService(arxiv, FakeCitations({"a": 1}), ResultStore())
+    oa = FakeOpenAlex(items=[_item("a")])
+    svc = SearchService(oa, ResultStore())
     svc.search(SearchRequest(query="q", n=10))
-    assert arxiv.pool_size == POOL_SIZE == 200
+    assert oa.pool_size == POOL_SIZE == 200
 
 
-def test_enriches_all_candidates_and_stores_full_pool():
-    arxiv = FakeArxiv(papers=[_paper("a", 0), _paper("b", 1), _paper("c", 2)])
-    cit = FakeCitations({"a": 5, "b": 9, "c": 1})
+def test_stores_full_pool_and_returns_top_n_relevance_order():
+    oa = FakeOpenAlex(items=[_item("a", 1), _item("b", 999), _item("c", 5)])
     store = ResultStore()
-    svc = SearchService(arxiv, cit, store)
+    svc = SearchService(oa, store)
     resp = svc.search(SearchRequest(query="q", n=2))
-
-    assert cit.requested == ["a", "b", "c"]  # all candidates enriched
-    assert resp.pool_size == 3               # full pool stored
-    assert len(resp.results) == 2            # top n returned
+    assert resp.pool_size == 3
+    assert len(resp.results) == 2
+    # relevance (input) order preserved, NOT citation order
+    assert [r.arxiv_id for r in resp.results] == ["a", "b"]
     assert len(store.get(resp.search_id)) == 3
 
 
-def test_initial_results_are_in_relevance_order():
-    arxiv = FakeArxiv(papers=[_paper("a", 0), _paper("b", 1), _paper("c", 2)])
-    svc = SearchService(arxiv, FakeCitations({"a": 1, "b": 999, "c": 5}), ResultStore())
-    resp = svc.search(SearchRequest(query="q", n=3))
-    assert [r.arxiv_id for r in resp.results] == ["a", "b", "c"]  # NOT citation order
-
-
-def test_empty_arxiv_returns_friendly_warning_and_stores_empty():
+def test_empty_returns_friendly_warning_and_stores_empty():
     store = ResultStore()
-    svc = SearchService(FakeArxiv(papers=[]), FakeCitations(), store)
+    svc = SearchService(FakeOpenAlex(items=[]), store)
     resp = svc.search(SearchRequest(query="q", n=5))
     assert resp.results == []
     assert any("broadening" in w for w in resp.warnings)
     assert store.get(resp.search_id) == []
 
 
-def test_arxiv_failure_raises_search_source_unavailable():
-    svc = SearchService(FakeArxiv(exc=ArxivUnavailable("down")), FakeCitations(), ResultStore())
+def test_openalex_failure_raises_search_source_unavailable():
+    svc = SearchService(FakeOpenAlex(exc=OpenAlexUnavailable("down")), ResultStore())
     with pytest.raises(SearchSourceUnavailable):
         svc.search(SearchRequest(query="q", n=5))
 
 
-def test_citation_failure_degrades_with_warning():
-    arxiv = FakeArxiv(papers=[_paper("a", 0), _paper("b", 1)])
-    svc = SearchService(arxiv, FakeCitations(exc=CitationUnavailable("429")), ResultStore())
-    resp = svc.search(SearchRequest(query="q", n=2))
-    assert len(resp.results) == 2
-    assert all(r.citation_data_missing for r in resp.results)
-    assert any("Citation data unavailable" in w for w in resp.warnings)
-
-
 def test_resort_reads_store_and_sorts_by_citations():
-    arxiv = FakeArxiv(papers=[_paper("a", 0), _paper("b", 1), _paper("c", 2)])
+    oa = FakeOpenAlex(items=[_item("a", 5), _item("b", 999), _item("c", 50)])
     store = ResultStore()
-    svc = SearchService(arxiv, FakeCitations({"a": 5, "b": 999, "c": 50}), store)
+    svc = SearchService(oa, store)
     resp = svc.search(SearchRequest(query="q", n=3))
-
     out = svc.resort(resp.search_id, SortKey.citations, n=2)
     assert [r.arxiv_id for r in out] == ["b", "c"]
 
 
 def test_resort_unknown_id_raises_search_not_found():
-    svc = SearchService(FakeArxiv(papers=[]), FakeCitations(), ResultStore())
+    svc = SearchService(FakeOpenAlex(items=[]), ResultStore())
     with pytest.raises(SearchNotFound):
         svc.resort("nope", SortKey.citations, n=10)
