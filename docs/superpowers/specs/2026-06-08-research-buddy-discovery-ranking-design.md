@@ -93,3 +93,26 @@ External failure modes dominate:
 - Results dashboard.
 
 The `search_id` + server-side result store is the deliberate seam that lets those milestones attach cleanly.
+
+## Amendment — Citation source: Semantic Scholar → OpenAlex (2026-06-08)
+
+During implementation, Semantic Scholar's unauthenticated batch endpoint proved
+unreliable: its rate limit is a 5,000-requests-per-5-minutes pool *shared across
+all anonymous callers*, so live searches intermittently failed with HTTP 429. We
+swapped the citation source to **OpenAlex**, which needs no API key and offers far
+more generous limits.
+
+The two-stage design made this a contained change — only `CitationClient`'s
+internals changed; its interface (`get_citation_counts(arxiv_ids) -> {arxiv_id:
+count}`, raising `CitationUnavailable`), and therefore `Ranker`, `SearchService`,
+and the API, were untouched.
+
+OpenAlex specifics:
+- Looked up by arXiv DOI (`10.48550/arXiv.<id>`), OR-filtered up to 50 IDs per
+  request; citation count read from `cited_by_count`.
+- IDs OpenAlex doesn't resolve (e.g. preprints deduped into their published
+  version) are omitted and treated as missing — identical to the prior behavior.
+- Optional `OPENALEX_MAILTO` env var opts into OpenAlex's faster "polite pool".
+
+Everything else in this design (signals, weights, normalization, graceful
+degradation, the `search_id` seam) is unchanged.

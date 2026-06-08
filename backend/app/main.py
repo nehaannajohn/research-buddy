@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -19,7 +21,12 @@ app.add_middleware(
 )
 
 _store = ResultStore()
-_service = SearchService(ArxivClient(), CitationClient(), _store)
+# OPENALEX_MAILTO opts into OpenAlex's faster "polite pool" when set.
+_service = SearchService(
+    ArxivClient(),
+    CitationClient(mailto=os.getenv("OPENALEX_MAILTO")),
+    _store,
+)
 
 
 def get_service() -> SearchService:

@@ -1,8 +1,11 @@
 # Research Buddy
 
 Milestone 1: paper discovery & ranking. A FastAPI backend queries arXiv and
-Semantic Scholar, ranks results by relevance + citations + recency, and a React
+OpenAlex, ranks results by relevance + citations + recency, and a React
 frontend renders ranked result cards with per-signal score breakdowns.
+
+Citation enrichment uses OpenAlex (no API key required). Set the optional
+`OPENALEX_MAILTO` env var to your email to use OpenAlex's faster "polite pool".
 
 ## Backend
 
